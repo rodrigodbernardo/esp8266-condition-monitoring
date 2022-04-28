@@ -34,13 +34,28 @@ const uint8_t ACCEL_SCALE = 8;     // Escala do acelerômetro
 
 unsigned long long prevCheckTime = 0;
 unsigned long long currTime;
-unsigned long long sample_period = 1600;
+
 unsigned long long interval = 0;
+
+//----------------------------------------------------
+// Variáveis e constantes referentes às especificações do sistema
+
+int n_capt = 100;
+int n_sensors = 3;
+unsigned long long sample_period = 100;
+
+//----------------------------------------------------
+// Variáveis e constantes relativas à extração de caracteristicas
+
+int window_size = 11;
+int window_border = window_size/2;
 
 //----------------------------------------------------
 // Variáveis e constantes de armazenamento de dados
 
-int16_t buffer[7];
+int16_t buffer[n_sensors];
+int16_t MPU_data[n_capt][n_sensors];
+float   MSD[n_capt - (2*window_border)][n_sensors];
 
 //----------------------------------------------------
 // Variáveis e constantes gerais
@@ -75,75 +90,36 @@ void setup()
 
   Wire.begin(MPU_SDA, MPU_SCL);
 
-  sensor_wakeup();
+  wakeupMPU();
 
   if (wifiMulti.run() != WL_CONNECTED)
   {
-    esp_setwifi();
+    setWifi();
   }
 
   command = "monitoramento-de-condicao";
 }
 
-void loop() {
-  while (command == "analise-em-tempo-real")
-  {
-    // Inicio da rotina de captura de dados
+void loop()
+{
+  delay(10000);
+  Serial.println("Preparando para capturar dados");
 
-    currTime = micros();
-    interval = currTime - prevCheckTime;
-    if (interval >= sample_period)
-    {
-      if (wifiMulti.run() != WL_CONNECTED)
-        esp_setwifi();
+  readMPU();
 
+  featureExtraction();
+  dataClassification();
 
-      //Serial.printf("Intervalo atual: %i\n", interval);
-      Serial.print(interval);
+  sendData();
 
-      //yield();
-
-      sensor_read();
-      sensor_print();
-      // sensor_send_data_continuous();
-      // mqtt.loop();
-
-      prevCheckTime = currTime; // Testar com micros();
-    }
-  }
-
-  while (command == "monitoramento-de-condicao")
-  {
-    sensor_read(100);
-
-    currTime = micros();
-    interval = currTime - prevCheckTime;
-    if (interval >= sample_period)
-    {
-      if (wifiMulti.run() != WL_CONNECTED)
-        esp_setwifi();
-
-
-      //Serial.printf("Intervalo atual: %i\n", interval);
-      Serial.print(interval);
-
-      //yield();
-
-      sensor_read();
-      sensor_print();
-      // sensor_send_data_continuous();
-      // mqtt.loop();
-
-      prevCheckTime = currTime; // Testar com micros();
-    }
-  }
+  Serial.println("Captura realizada. Entrando em estado de hibernação...");
 }
 
 //----------------------------------------------------
 //----------------------------------------------------
 // Funções de controle do MPU6050
 
-void sensor_write(int reg, int val)
+void writeMPU(int reg, int val)
 {
   //
   // COMUNICACAO I2C COM O SENSOR - NAO MODIFICAR
@@ -154,25 +130,31 @@ void sensor_write(int reg, int val)
   Wire.endTransmission();           // termina a transmissão
 }
 
-void sensor_wakeup()
+void wakeupMPU()
 {
   //
   // INICIA A CONFIGURAÇÃO DO SENSOR
   //
-  sensor_write(PWR_MGMT_1, 0);             // ACORDA O SENSOR
-  sensor_write(GYRO_CONFIG, GYRO_SCALE);   // CONFIGURA A ESCALA DO GIROSCÓPIO - +-250 °/s -->
-  sensor_write(ACCEL_CONFIG, ACCEL_SCALE); // CONFIGURA A ESCALA DO ACELERÔMETRO - +-4G
+  writeMPU(PWR_MGMT_1, 0);             // ACORDA O SENSOR
+  writeMPU(GYRO_CONFIG, GYRO_SCALE);   // CONFIGURA A ESCALA DO GIROSCÓPIO - +-250 °/s -->
+  writeMPU(ACCEL_CONFIG, ACCEL_SCALE); // CONFIGURA A ESCALA DO ACELERÔMETRO - +-4G
 }
 
-void sensor_read()
+void readMPU()
 {
-  Wire.beginTransmission(MPU_ADDR);
-  Wire.write(ACCEL_XOUT);
-  Wire.endTransmission(false);
-  Wire.requestFrom(MPU_ADDR, (uint8_t)6);
+  for (int capture = 0; capture < n_captures; capture++)
+  {
+    delay(sample_period);
+    Serial.printf("Captura %i", capture);
 
-  for (int axis = 0; axis < 7; axis++) // LÊ OS DADOS DE ACC
-    buffer[axis] = Wire.read() << 8 | Wire.read();
+    Wire.beginTransmission(MPU_ADDR);
+    Wire.write(ACCEL_XOUT);
+    Wire.endTransmission(false);
+    Wire.requestFrom(MPU_ADDR, (uint8_t)(n_sensors * 2));
+
+    for (int axis = 0; axis < n_sensors; axis++) // LÊ OS DADOS DE ACC
+      MPU_data[capture][axis] = Wire.read() << 8 | Wire.read();
+  }
 }
 
 void sensor_print()
@@ -196,7 +178,7 @@ void sensor_print()
 //----------------------------------------------------
 // Funções de controle do ESP8266
 
-void esp_setwifi()
+void setWifi()
 {
   WiFi.mode(WIFI_STA);
 
@@ -216,4 +198,30 @@ void esp_setwifi()
 
   Serial.print("\nWi-Fi conectada. IP ");
   Serial.println(WiFi.localIP());
+}
+
+void featureExtraction()
+{
+  // Calcula o desvio padrao movel
+  //
+
+  for(int centralElement = window_border; centralElement < n_capt-window_border; centralElement++)
+  {
+    for(int axis = 0; axis < n_sensors; axis ++)
+    {
+      for int i = (centralElement - window_border); i <
+
+
+      MSD[centralElement-window_border][axis] = 
+    }
+    
+  }
+}
+
+void dataClassification()
+{
+}
+
+void sendData()
+{
 }
