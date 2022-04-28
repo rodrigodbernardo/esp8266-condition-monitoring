@@ -48,14 +48,14 @@ unsigned long long sample_period = 100;
 // Variáveis e constantes relativas à extração de caracteristicas
 
 int window_size = 11;
-int window_border = window_size/2;
+int window_border = window_size / 2;
 
 //----------------------------------------------------
 // Variáveis e constantes de armazenamento de dados
 
 int16_t buffer[n_sensors];
 int16_t MPU_data[n_capt][n_sensors];
-float   MSD[n_capt - (2*window_border)][n_sensors];
+float MSD[n_capt - (2 * window_border)][n_sensors];
 
 //----------------------------------------------------
 // Variáveis e constantes gerais
@@ -204,17 +204,43 @@ void featureExtraction()
 {
   // Calcula o desvio padrao movel
   //
+  for (int axis = 0; axis < n_sensors; axis++){
+    for (int centralElement = window_border; centralElement < n_capt - window_border; centralElement++){
 
-  for(int centralElement = window_border; centralElement < n_capt-window_border; centralElement++)
-  {
-    for(int axis = 0; axis < n_sensors; axis ++)
-    {
-      for int i = (centralElement - window_border); i <
+      // Calcula o MSD
+      // 1. Media
+
+      float msd_mean = 0;
+      for (int i = (centralElement - window_border); i <= centralElement + window_border; i++){
+        msd_mean += (MPU_data[i][axis] / n_capt);
+      }
+
+      // 2. Variancia
+
+      float msd_variance;
+      for (int i = (centralElement - window_border); i <= centralElement + window_border; i++){
+        msd_variance += (MPU_data[i][axis] - msd_mean)**2;
+      }
+
+      // 3. Desvio padrao
+
+      MSD[centralElement - window_border][axis] = sqrt(msd_variance/window_size);
 
 
-      MSD[centralElement-window_border][axis] = 
+      
     }
-    
+  }
+
+  for (int centralElement = window_border; centralElement < n_capt - window_border; centralElement++)
+  {
+    for (int axis = 0; axis < n_sensors; axis++)
+    {
+      for
+        int i = (centralElement - window_border);
+      i <
+
+          MSD[centralElement - window_border][axis] =
+    }
   }
 }
 
