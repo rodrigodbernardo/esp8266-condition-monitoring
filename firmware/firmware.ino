@@ -49,6 +49,7 @@ unsigned long long sample_period = 100;
 
 int window_size = 11;
 int window_border = window_size / 2;
+float rms;
 
 //----------------------------------------------------
 // Variáveis e constantes de armazenamento de dados
@@ -225,23 +226,31 @@ void featureExtraction()
       // 3. Desvio padrao
 
       MSD[centralElement - window_border][axis] = sqrt(msd_variance/window_size);
-
-
-      
     }
   }
 
-  for (int centralElement = window_border; centralElement < n_capt - window_border; centralElement++)
+  // Calcula a media dos desvios padroes 
+  //
+
+  float media[3] = {0,0,0};
+
+  for (int position = 0; position < (n_capt - (2 * window_border)); position++)
   {
     for (int axis = 0; axis < n_sensors; axis++)
-    {
-      for
-        int i = (centralElement - window_border);
-      i <
-
-          MSD[centralElement - window_border][axis] =
-    }
+      media[axis] += (MSD[position][axis] / (n_capt - (2 * window_border)));
   }
+
+  rms = 0;
+
+  for(int i = 0; i < 3; i++)
+  {
+    rms += media[i]**2;
+  }
+
+  rms = sqrt(rms) / 3;
+
+  Serial.
+
 }
 
 void dataClassification()
