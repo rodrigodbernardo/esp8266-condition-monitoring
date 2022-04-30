@@ -49,14 +49,14 @@ unsigned long long sample_period = 100;
 
 int window_size = 11;
 int window_border = window_size / 2;
-float rms;
+double rms;
 
 //----------------------------------------------------
 // Variáveis e constantes de armazenamento de dados
 
 int16_t buffer[n_sensors];
 int16_t MPU_data[n_capt][n_sensors];
-float MSD[n_capt - (2 * window_border)][n_sensors];
+double MSD[n_capt - (2*window_border)][n_sensors];
 
 //----------------------------------------------------
 // Variáveis e constantes gerais
@@ -203,53 +203,50 @@ void setWifi()
 
 void featureExtraction()
 {
-  // Calcula o desvio padrao movel
-  //
   for (int axis = 0; axis < n_sensors; axis++){
-    for (int centralElement = window_border; centralElement < n_capt - window_border; centralElement++){
 
-      // Calcula o MSD
+    // Calcula o MSD
+
+    for (int centralElement = window_border; centralElement < n_capt - window_border; centralElement++)
+	{
       // 1. Media
-
-      float msd_mean = 0;
-      for (int i = (centralElement - window_border); i <= centralElement + window_border; i++){
-        msd_mean += (MPU_data[i][axis] / n_capt);
+          
+      double msd_mean = 0;
+      for (int i = (centralElement - window_border); i <= centralElement + window_border; i++)
+      {
+        msd_mean += (MPU_data[i][axis]);
       }
-
+      msd_mean /= window_size;
+        
       // 2. Variancia
-
-      float msd_variance;
+      
+      double msd_variance = 0;
+      
       for (int i = (centralElement - window_border); i <= centralElement + window_border; i++){
-        msd_variance += (MPU_data[i][axis] - msd_mean)**2;
+        msd_variance += pow((MPU_data[i][axis] - msd_mean),2);
       }
-
-      // 3. Desvio padrao
-
-      MSD[centralElement - window_border][axis] = sqrt(msd_variance/window_size);
+    
+      msd_variance /= window_size-1;    
+      MSD[centralElement - window_border][axis] = sqrt(msd_variance);
     }
   }
-
-  // Calcula a media dos desvios padroes 
-  //
-
-  float media[3] = {0,0,0};
+  
+  double media[3] = {0,0,0};
 
   for (int position = 0; position < (n_capt - (2 * window_border)); position++)
   {
     for (int axis = 0; axis < n_sensors; axis++)
-      media[axis] += (MSD[position][axis] / (n_capt - (2 * window_border)));
+    	media[axis] += (MSD[position][axis]);
   }
+  
+  for (int axis = 0; axis < n_sensors; axis++)
+  	media[axis] /= (n_capt - (2 * window_border));
 
-  rms = 0;
+  for(int axis = 0; axis < n_sensors; axis++)
+    rms += pow(media[axis],2);
 
-  for(int i = 0; i < 3; i++)
-  {
-    rms += media[i]**2;
-  }
-
-  rms = sqrt(rms) / 3;
-
-  Serial.
+  rms = sqrt(rms/3);
+  Serial.printf("\nRMS final = %f",rms);
 
 }
 
