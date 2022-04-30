@@ -40,15 +40,15 @@ unsigned long long interval = 0;
 //----------------------------------------------------
 // Variáveis e constantes referentes às especificações do sistema
 
-int n_capt = 100;
-int n_sensors = 3;
+const int n_capt = 100;
+const int n_sensors = 3;
 unsigned long long sample_period = 100;
 
 //----------------------------------------------------
 // Variáveis e constantes relativas à extração de caracteristicas
 
-int window_size = 11;
-int window_border = window_size / 2;
+const int window_size = 11;
+const int window_border = window_size / 2;
 double rms;
 
 //----------------------------------------------------
@@ -143,7 +143,7 @@ void wakeupMPU()
 
 void readMPU()
 {
-  for (int capture = 0; capture < n_captures; capture++)
+  for (int capture = 0; capture < n_capt; capture++)
   {
     delay(sample_period);
     Serial.printf("Captura %i", capture);
