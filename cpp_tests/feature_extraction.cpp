@@ -6,6 +6,7 @@ using namespace std;
 
 int main()
 {
+
   int MPU_data[100][3] = {
   {2414,8408,6950},
 {-2744,9488,13996},
@@ -109,50 +110,43 @@ int main()
 {-11958,6422,28424},
 };
 
-  //int MPU_data[2][3] = {{2414,8408,6950},{-2744,9488,13996}};
   int window_size = 9;
   int window_border = 4;
   int n_sensors = 3;
   int n_capt = 100;
+  double rms = 0;
   
   double MSD[n_capt - (2*window_border)][n_sensors];
 
   for (int axis = 0; axis < n_sensors; axis++){
     printf("\n\nSensor %i\n\n", axis);
     // Calcula o MSD
-    // 1. Media
-    for (int centralElement = window_border; centralElement < n_capt - window_border; centralElement++){
-      //printf("\n\nIteracao %i\n\n", (centralElement - window_border));
-      
+
+    for (int centralElement = window_border; centralElement < n_capt - window_border; centralElement++)
+	{
+      // 1. Media
+          
       double msd_mean = 0;
       for (int i = (centralElement - window_border); i <= centralElement + window_border; i++)
       {
         msd_mean += (MPU_data[i][axis]);
       }
       msd_mean /= window_size;
-    
-      //printf("Media = %f",msd_mean);
-    
+        
       // 2. Variancia
       
       double msd_variance = 0;
       
       for (int i = (centralElement - window_border); i <= centralElement + window_border; i++){
-        //printf("\nValor %i: %i",i,MPU_data[i]);
         msd_variance += pow((MPU_data[i][axis] - msd_mean),2);
       }
     
-      msd_variance /= window_size-1;
-    
-      //printf("\nVariancia = %f",msd_variance);
-    
+      msd_variance /= window_size-1;    
       MSD[centralElement - window_border][axis] = sqrt(msd_variance);
-    
-      //printf("\nDesvio padrao = %f",MSD[centralElement - window_border][axis]);
-      
     }
   }
   
+  /*
   printf("\n");
   for(int i = 0; i < n_capt - (2*window_border); i++)
   {
@@ -163,4 +157,24 @@ int main()
 	  }
 	  printf("\n");
   }
+  */
+  
+  double media[3] = {0,0,0};
+
+  for (int position = 0; position < (n_capt - (2 * window_border)); position++)
+  {
+    for (int axis = 0; axis < n_sensors; axis++)
+    	media[axis] += (MSD[position][axis]);
+  }
+  
+  for (int axis = 0; axis < n_sensors; axis++){
+  	media[axis] /= (n_capt - (2 * window_border));
+  	printf("\nmedia = %f",media[axis]);
+  }
+
+  for(int axis = 0; axis < n_sensors; axis++)
+    rms += pow(media[axis],2);
+
+  rms = sqrt(rms/3);
+  printf("\nRMS final = %f",rms);
 }
