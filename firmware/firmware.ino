@@ -17,6 +17,8 @@
 #define MPU_SDA D6
 #define MPU_SCL D5
 
+#define MPU_POW D1
+
 //----------------------------------------------------
 // Definição dos endereços de memória no MPU6050
 
@@ -52,11 +54,18 @@ const int window_border = window_size / 2;
 double rms;
 
 //----------------------------------------------------
+// Variáveis e constantes relativas à extração de caracteristicas
+
+const int n_classes = 3;
+double threshold[n_classes] = {6449.948355229731, 7038.69402258786, 7750.546329672901};
+int result_class = 0;
+
+//----------------------------------------------------
 // Variáveis e constantes de armazenamento de dados
 
-int16_t buffer[n_sensors];
+//int16_t buffer[n_sensors];
 int16_t MPU_data[n_capt][n_sensors];
-double MSD[n_capt - (2*window_border)][n_sensors];
+double MSD[n_capt - (2 * window_border)][n_sensors];
 
 //----------------------------------------------------
 // Variáveis e constantes gerais
@@ -80,6 +89,7 @@ ESP8266WiFiMulti wifiMulti;
 
 void setup()
 {
+  delay(2000);
   Serial.begin(500000);
   delay(1000);
 
@@ -88,6 +98,9 @@ void setup()
   Serial.print("Versão do firmware: ");
   Serial.println(Version);
   Serial.println("\n");
+
+  pinMode(MPU_POW, OUTPUT);
+  digitalWrite(MPU_POW, HIGH);
 
   Wire.begin(MPU_SDA, MPU_SCL);
 
@@ -108,10 +121,15 @@ void loop()
 
   readMPU();
 
+  if(MPU_data[0][0] == -1)
+  {
+    Serial.println("!!!! Erro de conexão com o sensor. Reinicie o sistema !!!!");
+  }
+
   featureExtraction();
   dataClassification();
 
-  sendData();
+  //sendData();
 
   Serial.println("Captura realizada. Entrando em estado de hibernação...");
 }
@@ -146,27 +164,28 @@ void readMPU()
   for (int capture = 0; capture < n_capt; capture++)
   {
     delay(sample_period);
-    Serial.printf("Captura %i", capture);
+    Serial.printf("Captura %i: ", capture);
 
     Wire.beginTransmission(MPU_ADDR);
     Wire.write(ACCEL_XOUT);
     Wire.endTransmission(false);
     Wire.requestFrom(MPU_ADDR, (uint8_t)(n_sensors * 2));
 
+    String message = "";
     for (int axis = 0; axis < n_sensors; axis++) // LÊ OS DADOS DE ACC
+    {
       MPU_data[capture][axis] = Wire.read() << 8 | Wire.read();
+      message += names[axis];
+      message += MPU_data[capture][axis];
+    }
+
+    Serial.println(message);
   }
 }
-
+/*
 void sensor_print()
 {
-  /*
-    for (int j = 0; j < 7; j++)
-    {
-    Serial.print(names[j]);
-    Serial.print(v_data[0][j]);
-    }
-  */
+
   for (int j = 0; j < 3; j++)
   {
     Serial.print(names[j]);
@@ -174,7 +193,7 @@ void sensor_print()
   }
   Serial.println();
 }
-
+*/
 //----------------------------------------------------
 //----------------------------------------------------
 // Funções de controle do ESP8266
@@ -203,55 +222,65 @@ void setWifi()
 
 void featureExtraction()
 {
-  for (int axis = 0; axis < n_sensors; axis++){
+  for (int axis = 0; axis < n_sensors; axis++)
+  {
 
     // Calcula o MSD
 
     for (int centralElement = window_border; centralElement < n_capt - window_border; centralElement++)
-	{
+    {
       // 1. Media
-          
+
       double msd_mean = 0;
       for (int i = (centralElement - window_border); i <= centralElement + window_border; i++)
       {
         msd_mean += (MPU_data[i][axis]);
       }
       msd_mean /= window_size;
-        
+
       // 2. Variancia
-      
+
       double msd_variance = 0;
-      
-      for (int i = (centralElement - window_border); i <= centralElement + window_border; i++){
-        msd_variance += pow((MPU_data[i][axis] - msd_mean),2);
+
+      for (int i = (centralElement - window_border); i <= centralElement + window_border; i++)
+      {
+        msd_variance += pow((MPU_data[i][axis] - msd_mean), 2);
       }
-    
-      msd_variance /= window_size-1;    
+
+      msd_variance /= window_size - 1;
       MSD[centralElement - window_border][axis] = sqrt(msd_variance);
     }
   }
-  
-  double media[3] = {0,0,0};
+
+  double media[3] = {0, 0, 0};
 
   for (int position = 0; position < (n_capt - (2 * window_border)); position++)
   {
     for (int axis = 0; axis < n_sensors; axis++)
-    	media[axis] += (MSD[position][axis]);
+      media[axis] += (MSD[position][axis]);
   }
-  
+
   for (int axis = 0; axis < n_sensors; axis++)
-  	media[axis] /= (n_capt - (2 * window_border));
+    media[axis] /= (n_capt - (2 * window_border));
 
-  for(int axis = 0; axis < n_sensors; axis++)
-    rms += pow(media[axis],2);
+  for (int axis = 0; axis < n_sensors; axis++)
+    rms += pow(media[axis], 2);
 
-  rms = sqrt(rms/3);
-  Serial.printf("\nRMS final = %f",rms);
-
+  rms = sqrt(rms / n_sensors);
+  Serial.printf("\nRMS final = %f", rms);
 }
 
 void dataClassification()
 {
+  for (int i = 0; i < (n_classes - 1); i++)
+  {
+    if (rms >= threshold[i])
+    {
+      result_class = i + 1;
+    }
+  }
+
+  Serial.printf("\nResult class = %i\n", result_class);
 }
 
 void sendData()
