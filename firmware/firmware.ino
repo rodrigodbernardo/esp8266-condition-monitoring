@@ -44,7 +44,7 @@ unsigned long long interval = 0;
 
 const int n_capt = 100;
 const int n_sensors = 3;
-unsigned long long sample_period = 100;
+unsigned long long sample_period = 5000;
 
 //----------------------------------------------------
 // Variáveis e constantes relativas à extração de caracteristicas
@@ -121,7 +121,7 @@ void loop()
 
   readMPU();
 
-  if(MPU_data[0][0] == -1)
+  if (MPU_data[0][0] == -1 || MPU_data[0][0] == 0)
   {
     Serial.println("!!!! Erro de conexão com o sensor. Reinicie o sistema !!!!");
   }
@@ -161,30 +161,43 @@ void wakeupMPU()
 
 void readMPU()
 {
-  for (int capture = 0; capture < n_capt; capture++)
+  prevCheckTime = micros();
+  int capt_counter = 0;
+
+  while (capt_counter < n_capt)
   {
-    delay(sample_period);
-    Serial.printf("Captura %i: ", capture);
+    currTime = micros();
+    interval = currTime - prevCheckTime;
 
-    Wire.beginTransmission(MPU_ADDR);
-    Wire.write(ACCEL_XOUT);
-    Wire.endTransmission(false);
-    Wire.requestFrom(MPU_ADDR, (uint8_t)(n_sensors * 2));
-
-    String message = "";
-    for (int axis = 0; axis < n_sensors; axis++) // LÊ OS DADOS DE ACC
+    if ( interval >= sample_period)
     {
-      MPU_data[capture][axis] = Wire.read() << 8 | Wire.read();
-      message += names[axis];
-      message += MPU_data[capture][axis];
-    }
+      //delay(sample_period);
+      prevCheckTime = currTime;
+      yield();
+      
+      Serial.printf("Captura %i: ", capt_counter);
 
-    Serial.println(message);
+      Wire.beginTransmission(MPU_ADDR);
+      Wire.write(ACCEL_XOUT);
+      Wire.endTransmission(false);
+      Wire.requestFrom(MPU_ADDR, (uint8_t)(n_sensors * 2));
+
+      String message = "";
+      for (int axis = 0; axis < n_sensors; axis++) // LÊ OS DADOS DE ACC
+      {
+        MPU_data[capt_counter][axis] = Wire.read() << 8 | Wire.read();
+        message += names[axis];
+        message += MPU_data[capt_counter][axis];
+      }
+
+      Serial.println(message);
+      capt_counter++;
+    }
   }
 }
 /*
-void sensor_print()
-{
+  void sensor_print()
+  {
 
   for (int j = 0; j < 3; j++)
   {
@@ -192,7 +205,7 @@ void sensor_print()
     Serial.print(buffer[j]);
   }
   Serial.println();
-}
+  }
 */
 //----------------------------------------------------
 //----------------------------------------------------
@@ -230,13 +243,13 @@ void featureExtraction()
     for (int centralElement = window_border; centralElement < n_capt - window_border; centralElement++)
     {
       // 1. Media
-
       double msd_mean = 0;
       for (int i = (centralElement - window_border); i <= centralElement + window_border; i++)
       {
         msd_mean += (MPU_data[i][axis]);
       }
       msd_mean /= window_size;
+      //Serial.printf("\nMedia = %f\n", msd_mean);
 
       // 2. Variancia
 
@@ -249,6 +262,7 @@ void featureExtraction()
 
       msd_variance /= window_size - 1;
       MSD[centralElement - window_border][axis] = sqrt(msd_variance);
+      //Serial.printf("\nDesvio padrao da janela = %f\n",MSD[centralElement - window_border][axis]);
     }
   }
 
@@ -260,9 +274,13 @@ void featureExtraction()
       media[axis] += (MSD[position][axis]);
   }
 
-  for (int axis = 0; axis < n_sensors; axis++)
+  for (int axis = 0; axis < n_sensors; axis++){
     media[axis] /= (n_capt - (2 * window_border));
+    //Serial.printf("\nMedia do sensor %i = %f\n", axis, media[axis]);
+  }
 
+  rms = 0;
+  
   for (int axis = 0; axis < n_sensors; axis++)
     rms += pow(media[axis], 2);
 
