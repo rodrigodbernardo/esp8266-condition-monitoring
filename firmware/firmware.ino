@@ -57,7 +57,7 @@ double rms;
 // Variáveis e constantes relativas à extração de caracteristicas
 
 const int n_classes = 3;
-double threshold[n_classes] = {6449.948355229731, 7038.69402258786, 7750.546329672901};
+double threshold[n_classes] = {7255, 7666, 9672};
 int result_class = 0;
 
 //----------------------------------------------------
@@ -116,8 +116,8 @@ void setup()
 
 void loop()
 {
-  delay(10000);
-  Serial.println("Preparando para capturar dados");
+  delay(1000);
+  //Serial.println("Preparando para capturar dados");
 
   readMPU();
 
@@ -131,7 +131,7 @@ void loop()
 
   //sendData();
 
-  Serial.println("Captura realizada. Entrando em estado de hibernação...");
+  //Serial.println("Captura realizada. Entrando em estado de hibernação...");
 }
 
 //----------------------------------------------------
@@ -175,22 +175,23 @@ void readMPU()
       prevCheckTime = currTime;
       yield();
       
-      Serial.printf("Captura %i: ", capt_counter);
+      //Serial.printf("Captura %i: ", capt_counter);
 
       Wire.beginTransmission(MPU_ADDR);
       Wire.write(ACCEL_XOUT);
       Wire.endTransmission(false);
       Wire.requestFrom(MPU_ADDR, (uint8_t)(n_sensors * 2));
 
-      String message = "";
+      //String message = "";
       for (int axis = 0; axis < n_sensors; axis++) // LÊ OS DADOS DE ACC
       {
         MPU_data[capt_counter][axis] = Wire.read() << 8 | Wire.read();
-        message += names[axis];
-        message += MPU_data[capt_counter][axis];
+        //message += names[axis];
+        //message += MPU_data[capt_counter][axis];
       }
 
-      Serial.println(message);
+      //Serial.print(message);
+      //Serial.println();
       capt_counter++;
     }
   }
@@ -260,7 +261,7 @@ void featureExtraction()
         msd_variance += pow((MPU_data[i][axis] - msd_mean), 2);
       }
 
-      msd_variance /= window_size - 1;
+      msd_variance /= window_size ;//- 1;
       MSD[centralElement - window_border][axis] = sqrt(msd_variance);
       //Serial.printf("\nDesvio padrao da janela = %f\n",MSD[centralElement - window_border][axis]);
     }
@@ -285,11 +286,14 @@ void featureExtraction()
     rms += pow(media[axis], 2);
 
   rms = sqrt(rms / n_sensors);
+  //rms -= 500;
   Serial.printf("\nRMS final = %f", rms);
 }
 
 void dataClassification()
 {
+  result_class = 0;
+  
   for (int i = 0; i < (n_classes - 1); i++)
   {
     if (rms >= threshold[i])
@@ -298,7 +302,7 @@ void dataClassification()
     }
   }
 
-  Serial.printf("\nResult class = %i\n", result_class);
+  Serial.printf("\nResult class = %i\n\n", result_class);
 }
 
 void sendData()
