@@ -75,7 +75,7 @@ double MSD[n_capt - (2 * window_border)][6];
 // Variáveis e constantes gerais
 
 String names[7] = {"AcX:", ",AcY:", ",AcZ:", ",GyX:", ",GyY:", ",GyZ:", ",Tmp:"};
-
+int lastState = LOW;  // the previous state from the input pin
 
 //----------------------------------------------------
 // Variáveis e constantes gerais
@@ -127,6 +127,12 @@ PubSubClient mqtt(IO_SERVER, IO_SERVERPORT, callback, espClient);
 
 void setup()
 {
+  pinMode(0, INPUT_PULLUP);
+
+  pinMode(MPU_POW , OUTPUT);
+  pinMode(D0      , OUTPUT);
+  pinMode(D4      , OUTPUT);
+
   delay(2000);
   Serial.begin(500000);
   delay(1000);
@@ -137,20 +143,19 @@ void setup()
   Serial.println(Version);
   Serial.println("\n");
 
-  pinMode(MPU_POW, OUTPUT);
   digitalWrite(MPU_POW, HIGH);
   delay(500);
 
   Wire.begin(MPU_SDA, MPU_SCL);
 
   wakeupMPU();
-
-  if (wifiMulti.run() != WL_CONNECTED)
-  {
-    setWifi();
-  }
-
-  command = -1;
+  /*
+    if (wifiMulti.run() != WL_CONNECTED)
+    {
+      setWifi();
+    }
+  */
+  command = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -159,7 +164,102 @@ void setup()
 
 void loop()
 {
+  if (wifiMulti.run() != WL_CONNECTED)
+  {
+    setWifi();
+  }
+  mqtt.loop();
 
+  if (!mqtt.connected())
+  {
+    setMqtt();
+  }
+
+
+  if (digitalRead(0) == LOW)
+  {
+
+    Serial.println("BOTÃO PRESSIONADO. MODIFICANDO CONFIGURAÇÃO...");
+    bool configActive = 1;
+    bool ledState = 0;
+    unsigned long previousTime = 0;
+
+    
+    int currentState;     // the current reading from the input pin
+    unsigned long pressedTime  = 0;
+    unsigned long releasedTime = 0;
+    int menu = 0;
+
+    digitalWrite(D0, 1);
+
+
+    while (configActive)
+    {
+      // read the state of the switch/button:
+      currentState = digitalRead(0);
+
+      if (lastState == HIGH && currentState == LOW)       // button is pressed
+        pressedTime = millis();
+      else if (lastState == LOW && currentState == HIGH) { // button is released
+        releasedTime = millis();
+
+        long pressDuration = releasedTime - pressedTime;
+
+        if (pressDuration > 1000)
+        {
+          Serial.println("A long press is detected");
+          digitalWrite(D0, 0);
+          delay(10);
+          digitalWrite(D0, 1);
+          delay(100);
+          digitalWrite(D0, 0);
+          delay(10);
+          digitalWrite(D0, 1);
+
+          menu++;
+
+        } else
+        {
+          configActive = 0;
+        }
+
+      }
+
+      // save the the last state
+      lastState = currentState;
+
+      unsigned long currentTime = millis();
+      if (currentTime - previousTime >= 250)
+      {
+        previousTime = currentTime;
+
+        ledState = !ledState;
+        digitalWrite(D4, ledState);
+      }
+      yield();
+    }
+
+
+
+
+
+    command++;
+    if (command > 2)
+      command = 0;
+
+    switch (command)
+    {
+      case 1:
+        Serial.println("\n1 - ANÁLISE EM TEMPO REAL\n");
+        break;
+      case 2:
+        Serial.println("\n2 - CLASSIFICAÇÃO LOCAL CONTÍNUA\n");
+        break;
+    }
+
+    delay(5000);
+  }
+/*
   readMPU(1);
   while (MPU_data[0][0] == -1 || MPU_data[0][0] == 0)
   {
@@ -172,29 +272,44 @@ void loop()
     wakeupMPU();
     readMPU(1);
   }
-  
+  */
+  /*
     mqtt.loop();
 
     if (!mqtt.connected())
     {
       setMqtt();
     }
-  
-  if (wifiMulti.run() != WL_CONNECTED)
-  {
+
+    if (wifiMulti.run() != WL_CONNECTED)
+    {
     setWifi();
-  }
+    }
+  */
+
 
   switch (command)
   {
     case 1: // Analise em tempo real
       {
         readMPU(1);
+        //Serial.println("Print here");
         printMPU();
         mqtt.loop();
         break;
       }
-    case 2: // Envio de dados (analise rapida)
+    case 2: // Classificação de dados
+      {
+        readMPU(n_capt);
+        featureExtraction();
+        dataClassification();
+
+        mqtt.loop();
+
+        delay(1000);
+        break;
+      }
+    case 3: // Envio de dados (analise rapida)
       {
         for (int packet = 0; packet < n_pack; packet++)
         {
@@ -203,26 +318,14 @@ void loop()
           mqtt.loop();
         }
 
-        command = -1;
+        command = 0;
         // Envia MQTT bruto
         break;
       }
-    case 3: // Classificação de dados
-      {
-        readMPU(n_capt);
-        featureExtraction();
-        dataClassification();
 
-        mqtt.loop();
-        Serial.println("Captura realizada. Entrando em estado de hibernação...");
-
-        delay(10000);
-        break;
-      }
     default:
       {
-        Serial.println("Aguardando por comando");
-        delay(1000);
+        Serial.println("NENHUM COMANDO RECEBIDO.");
         break;
       }
   }
@@ -305,6 +408,7 @@ void wakeupMPU()
 */
 void readMPU(int iterations)
 {
+
   prevCheckTime = micros();
   int capt_counter = 0;
 
@@ -315,6 +419,8 @@ void readMPU(int iterations)
 
     if (interval >= sample_period)
     {
+      //Serial.println(capt_counter);
+      //Serial.println(interval);
       //delay(sample_period);
       prevCheckTime = currTime;
       yield();
@@ -329,7 +435,7 @@ void readMPU(int iterations)
       for (int i = 0; i < 3; i++) // LÊ OS DADOS DE ACC
         MPU_data[capt_counter][i] = Wire.read() << 8 | Wire.read();
 
-      MPU_temp[0] = Wire.read() << 8 | Wire.read(); //LÊ OS DADOS DE TEMP
+      MPU_temp[capt_counter] = Wire.read() << 8 | Wire.read(); //LÊ OS DADOS DE TEMP
 
       for (int i = 3; i < 6; i++) // LÊ OS DADOS DE GYR
         MPU_data[capt_counter][i] = Wire.read() << 8 | Wire.read();
@@ -343,8 +449,8 @@ void printMPU()
 {
   for (int i = 0; i < 6; i++) // LÊ OS DADOS DE ACC
   {
-      Serial.print(names[i]);
-      Serial.print(MPU_data[0][i]);
+    Serial.print(names[i]);
+    Serial.print(MPU_data[0][i]);
   }
   Serial.print(names[6]);
   Serial.println(MPU_temp[0]);
