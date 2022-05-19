@@ -112,13 +112,13 @@ void callback(char *topic, byte *payload, unsigned int length)
   Serial.println(status);
 }
 
-////////////////////////////////////////////////////////  OBJECTS  ////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////  OBJECTS  //////////////////////////////////////////////////////
 
 
 ESP8266WiFiMulti wifiMulti;
 
 WiFiClient espClient;
-PubSubClient mqtt(IO_SERVER, IO_SERVERPORT, callback, espClient);
+//PubSubClient mqtt(IO_SERVER, IO_SERVERPORT, callback, espClient);
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -164,6 +164,7 @@ void setup()
 
 void loop()
 {
+  /*
   if (wifiMulti.run() != WL_CONNECTED)
   {
     setWifi();
@@ -174,7 +175,7 @@ void loop()
   {
     setMqtt();
   }
-
+*/
 
   if (digitalRead(0) == LOW)
   {
@@ -295,7 +296,7 @@ void loop()
         readMPU(1);
         //Serial.println("Print here");
         printMPU();
-        mqtt.loop();
+        //mqtt.loop();
         break;
       }
     case 2: // Classificação de dados
@@ -304,7 +305,7 @@ void loop()
         featureExtraction();
         dataClassification();
 
-        mqtt.loop();
+        //mqtt.loop();
 
         delay(1000);
         break;
@@ -314,8 +315,8 @@ void loop()
         for (int packet = 0; packet < n_pack; packet++)
         {
           readMPU(n_capt);
-          sendData();
-          mqtt.loop();
+          //sendData();
+          //mqtt.loop();
         }
 
         command = 0;
@@ -452,14 +453,15 @@ void printMPU()
     Serial.print(names[i]);
     Serial.print(MPU_data[0][i]);
   }
-  Serial.print(names[6]);
-  Serial.println(MPU_temp[0]);
+  //Serial.print(names[6]);
+  //Serial.print(MPU_temp[0]);
+  Serial.println();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////  ESP CONTROL  ////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/*
 void setWifi()
 {
   WiFi.mode(WIFI_STA);
@@ -532,7 +534,7 @@ void setMqtt()
   }
 }
 
-
+*/
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////  MODEL CONTROL  ////////////////////////////////////////////////////////
