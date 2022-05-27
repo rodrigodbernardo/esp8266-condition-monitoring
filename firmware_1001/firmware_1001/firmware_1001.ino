@@ -2,6 +2,8 @@
 #include <PubSubClient.h>
 #include <ESP8266WiFiMulti.h>
 #include <ArduinoJson.h>
+//#include "WiFiTask.h"
+
 
 #include "secure.hpp"
 
@@ -75,13 +77,21 @@ double MSD[n_capt - (2 * window_border)][6];
 // Variáveis e constantes gerais
 
 String names[7] = {"AcX:", ",AcY:", ",AcZ:", ",GyX:", ",GyY:", ",GyZ:", ",Tmp:"};
-int lastState = LOW;  // the previous state from the input pin
 
 //----------------------------------------------------
 // Variáveis e constantes gerais
 
 int command;
 String status;
+
+unsigned long pressedTime  = 0;
+unsigned long releasedTime = 0;
+int currentState;     // the current reading from the input pin
+int lastState = HIGH;  // the previous state from the input pin
+float D0Value = 0;
+float D4Value = 0;
+bool captErrorFlag = HIGH;
+bool netErrorFlag = LOW;
 
 
 ////////////////////////////////////////////////////////  MQTT CALLBACK  ////////////////////////////////////////////////////////
@@ -110,6 +120,14 @@ void callback(char *topic, byte *payload, unsigned int length)
   status += "ms ";
 
   Serial.println(status);
+
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i=0;i<length;i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
 }
 
 ////////////////////////////////////////////////////////  OBJECTS  //////////////////////////////////////////////////////
@@ -118,7 +136,7 @@ void callback(char *topic, byte *payload, unsigned int length)
 ESP8266WiFiMulti wifiMulti;
 
 WiFiClient espClient;
-//PubSubClient mqtt(IO_SERVER, IO_SERVERPORT, callback, espClient);
+PubSubClient mqtt(IO_SERVER, IO_SERVERPORT, callback, espClient);
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -133,9 +151,7 @@ void setup()
   pinMode(D0      , OUTPUT);
   pinMode(D4      , OUTPUT);
 
-  delay(2000);
   Serial.begin(500000);
-  delay(1000);
 
   Serial.println("Sistema de monitoramento de condição - LARI IFCE");
   Serial.println("Desenvolvido por: Rodrigo D. B. de Araújo");
@@ -143,18 +159,15 @@ void setup()
   Serial.println(Version);
   Serial.println("\n");
 
+  setWifi();
+
   digitalWrite(MPU_POW, HIGH);
   delay(500);
 
   Wire.begin(MPU_SDA, MPU_SCL);
 
   wakeupMPU();
-  /*
-    if (wifiMulti.run() != WL_CONNECTED)
-    {
-      setWifi();
-    }
-  */
+
   command = 0;
 }
 
@@ -164,136 +177,88 @@ void setup()
 
 void loop()
 {
-  /*
-  if (wifiMulti.run() != WL_CONNECTED)
+  updateVisualFeedback();
+
+  if (checkMPU())
   {
-    setWifi();
+    command = -1;
+    captErrorFlag = HIGH;
   }
-  mqtt.loop();
-
-  if (!mqtt.connected())
+  else
   {
-    setMqtt();
+    captErrorFlag = LOW;
   }
-*/
 
-  if (digitalRead(0) == LOW)
+  if (netErrorFlag==LOW)
   {
-
-    Serial.println("BOTÃO PRESSIONADO. MODIFICANDO CONFIGURAÇÃO...");
-    bool configActive = 1;
-    bool ledState = 0;
-    unsigned long previousTime = 0;
-
-    
-    int currentState;     // the current reading from the input pin
-    unsigned long pressedTime  = 0;
-    unsigned long releasedTime = 0;
-    int menu = 0;
-
-    digitalWrite(D0, 1);
-
-
-    while (configActive)
-    {
-      // read the state of the switch/button:
-      currentState = digitalRead(0);
-
-      if (lastState == HIGH && currentState == LOW)       // button is pressed
-        pressedTime = millis();
-      else if (lastState == LOW && currentState == HIGH) { // button is released
-        releasedTime = millis();
-
-        long pressDuration = releasedTime - pressedTime;
-
-        if (pressDuration > 1000)
-        {
-          Serial.println("A long press is detected");
-          digitalWrite(D0, 0);
-          delay(10);
-          digitalWrite(D0, 1);
-          delay(100);
-          digitalWrite(D0, 0);
-          delay(10);
-          digitalWrite(D0, 1);
-
-          menu++;
-
-        } else
-        {
-          configActive = 0;
-        }
-
-      }
-
-      // save the the last state
-      lastState = currentState;
-
-      unsigned long currentTime = millis();
-      if (currentTime - previousTime >= 250)
-      {
-        previousTime = currentTime;
-
-        ledState = !ledState;
-        digitalWrite(D4, ledState);
-      }
-      yield();
-    }
-
-
-
-
-
-    command++;
-    if (command > 2)
-      command = 0;
-
-    switch (command)
-    {
-      case 1:
-        Serial.println("\n1 - ANÁLISE EM TEMPO REAL\n");
-        break;
-      case 2:
-        Serial.println("\n2 - CLASSIFICAÇÃO LOCAL CONTÍNUA\n");
-        break;
-    }
-
-    delay(5000);
-  }
-/*
-  readMPU(1);
-  while (MPU_data[0][0] == -1 || MPU_data[0][0] == 0)
-  {
-    Serial.println("!!!! Erro de conexão com o sensor. Reinicie o sistema !!!!");
-
-    digitalWrite(MPU_POW, LOW);
-    delay(500);
-    digitalWrite(MPU_POW, HIGH);
-    delay(500);
-    wakeupMPU();
-    readMPU(1);
-  }
-  */
-  /*
     mqtt.loop();
 
     if (!mqtt.connected())
     {
       setMqtt();
     }
-
+  }
+  /*
     if (wifiMulti.run() != WL_CONNECTED)
     {
     setWifi();
     }
+
   */
 
 
+  currentState = digitalRead(0);
+
+  if (lastState == HIGH && currentState == LOW)       // button is pressed
+    pressedTime = millis();
+  else if (lastState == LOW && currentState == HIGH)
+  { // button is released
+    releasedTime = millis();
+
+    long pressDuration = releasedTime - pressedTime;
+
+    if (pressDuration > 2000)
+    {
+      Serial.println("A long press is detected");
+      digitalWrite(D0, 0);
+      delay(10);
+      digitalWrite(D0, 1);
+      delay(100);
+      digitalWrite(D0, 0);
+      delay(10);
+      digitalWrite(D0, 1);
+      checkMPU();
+
+    } else
+    {
+      //configActive = 0;
+
+      command++;
+      if (command > 2)
+        command = 0;
+
+      switch (command)
+      {
+        case 1:
+          Serial.println("\n1 - ANÁLISE EM TEMPO REAL\n");
+          break;
+        case 2:
+          Serial.println("\n2 - CLASSIFICAÇÃO LOCAL CONTÍNUA\n");
+          break;
+      }
+    }
+
+  }
+  lastState = currentState;
+
+
+/*
   switch (command)
   {
     case 1: // Analise em tempo real
       {
-        readMPU(1);
+
+        readRawMPU(1);
         //Serial.println("Print here");
         printMPU();
         //mqtt.loop();
@@ -301,26 +266,40 @@ void loop()
       }
     case 2: // Classificação de dados
       {
-        readMPU(n_capt);
+
+        readRawMPU(n_capt);
         featureExtraction();
         dataClassification();
 
+        sendClass();
+
         //mqtt.loop();
 
-        delay(1000);
+        delay(10000);
         break;
       }
     case 3: // Envio de dados (analise rapida)
       {
         for (int packet = 0; packet < n_pack; packet++)
         {
-          readMPU(n_capt);
-          //sendData();
+          readRawMPU(n_capt);
+          sendData();
           //mqtt.loop();
         }
 
         command = 0;
         // Envia MQTT bruto
+        break;
+      }
+    case -1:
+      {
+        Serial.println("Verifique dispositivo - MPU6050 NÃO disponível!");
+        digitalWrite(MPU_POW, LOW);
+        delay(500);
+        digitalWrite(MPU_POW, HIGH);
+        delay(500);
+        wakeupMPU();
+
         break;
       }
 
@@ -330,11 +309,44 @@ void loop()
         break;
       }
   }
+  */
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////  MPU CONTROL  ////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+bool checkMPU()
+{
+  //findMPU(MPU_ADDR);
+
+  if (readRegMPU(WHO_AM_I) == 104)
+  {
+    //Serial.println("MPU6050 Dispositivo respondeu OK! (104)");
+
+    //if(readRegMPU(PWR_MGMT_1) == 64) Serial.println("MPU6050 em modo SLEEP! (64)");
+    //else Serial.println("MPU6050 em modo ACTIVE!");
+
+    return 0;
+  }
+  return 1;
+}
+
+
+uint8_t readRegMPU(uint8_t reg)        // aceita um registro como parâmetro
+{
+  uint8_t data;
+  Wire.beginTransmission(MPU_ADDR);     // inicia comunicação com endereço do MPU6050
+  Wire.write(reg);                      // envia o registro com o qual se deseja trabalhar
+  Wire.endTransmission(false);          // termina transmissão mas continua com I2C aberto (envia STOP e START)
+  Wire.requestFrom(MPU_ADDR, 1);        // configura para receber 1 byte do registro escolhido acima
+  data = Wire.read();                   // lê o byte e guarda em 'data'
+  return data;                          //retorna 'data'
+}
+
+//---------------------------------------------------------------
+
 
 void writeMPU(int reg, int val)
 {
@@ -407,7 +419,7 @@ void wakeupMPU()
   }
   }
 */
-void readMPU(int iterations)
+void readRawMPU(int iterations)
 {
 
   prevCheckTime = micros();
@@ -461,7 +473,7 @@ void printMPU()
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////  ESP CONTROL  ////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/*
+
 void setWifi()
 {
   WiFi.mode(WIFI_STA);
@@ -471,17 +483,18 @@ void setWifi()
     wifiMulti.addAP(WLAN_SSID[i], WLAN_PASS[i]);
   }
 
-  Serial.print("Conectando à rede Wi-Fi.");
-  for (int retry = 15; (retry >= 0 && wifiMulti.run() != WL_CONNECTED); retry--)
+  Serial.println("Conectando à rede Wi-Fi...");
+  for (int tries = 5; wifiMulti.run(1000) != WL_CONNECTED && tries >= 0; tries--)
   {
-    if (retry == 0)
-      while (1)
-        ;
     Serial.print(".");
-  }
 
-  Serial.print("\nWi-Fi conectada. IP ");
-  Serial.println(WiFi.localIP());
+    if (tries == 0)
+    {
+      netErrorFlag = HIGH;
+      Serial.println("WiFi não encontrado. Modo offline ativado.");
+      
+    }
+  }
 }
 
 void sendData()
@@ -505,10 +518,25 @@ void sendData()
   mqtt.publish(topicESP_SCADA, "fim");
 }
 
+void sendClass()
+{
+        //Serial.printf("RMS_ACC: %f,", rms_acc);
+        //Serial.printf("RMS_GYR: %f,", rms_gyr);
+        String acc_res = "", gyr_res = "", class_res = "";
+
+        acc_res += rms_acc;
+        gyr_res += rms_gyr;
+        class_res += result_class;
+        
+        mqtt.publish(topic_acc_rms, acc_res.c_str());
+        mqtt.publish(topic_gyr_rms, gyr_res.c_str());
+        mqtt.publish(topic_acc_class, class_res.c_str());
+}
+
 void setMqtt()
 {
   // Loop until we're reconnected
-  while (!mqtt.connected())
+  if (!mqtt.connected())
   {
     Serial.print("Attempting MQTT connection...");
     // Create a random client ID
@@ -527,14 +555,14 @@ void setMqtt()
     {
       // Serial.print("failed, rc=");
       // Serial.print(mqtt.state());
-      Serial.println(" try again in 5 seconds");
+      //Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
-      delay(5000);
+      delay(500);
     }
   }
 }
 
-*/
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////  MODEL CONTROL  ////////////////////////////////////////////////////////
@@ -599,8 +627,8 @@ void featureExtraction()
   rms_gyr = sqrt(rms_gyr / 3);
 
   //rms -= 500;
-  Serial.printf("\nRMS final (acc) = %f", rms_acc);
-  Serial.printf("\nRMS final (gyr) = %f", rms_gyr);
+  Serial.printf("RMS_ACC: %f,", rms_acc);
+  Serial.printf("RMS_GYR: %f,", rms_gyr);
 }
 
 void dataClassification()
@@ -615,5 +643,32 @@ void dataClassification()
     }
   }
 
-  Serial.printf("\nResult class = %i\n\n", result_class);
+  Serial.printf("CLASS: %i\n", result_class);
+}
+
+void updateVisualFeedback()
+{
+  //  if (netErrorFlag)
+  //  {
+  analogWrite(D0, abs(-cos(D0Value) * 128 - 128));
+  D0Value += (0.05 * netErrorFlag);
+
+  if (D0Value >= 2 * M_PI)
+  {
+    D0Value = 0;
+  }
+  /* }
+    else
+    {
+     digitalWrite(D1, HIGH);
+    }
+  */
+  analogWrite(D4, sin(D4Value) * 128 + 128);
+  D4Value += (0.005 + 0.019 * captErrorFlag);
+
+  if (D4Value >= 2 * M_PI)
+  {
+    D4Value = 0;
+  }
+
 }
